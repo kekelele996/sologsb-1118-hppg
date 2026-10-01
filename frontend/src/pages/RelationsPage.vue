@@ -6,12 +6,14 @@ import { RELATION_BASES, RELATION_TYPES } from '@/types'
 import RelationGraph from '@/components/common/RelationGraph.vue'
 import UnitPicker from '@/components/common/UnitPicker.vue'
 import { useStore } from '@/hooks/usePersistentStore'
+import { usePartyRole } from '@/hooks/usePartyRole'
 import { checkRelationCycle, useRelationGraph } from '@/hooks/useRelationGraph'
 import { relationStore } from '@/stores/relationStore'
 import { stratumStore } from '@/stores/stratumStore'
 import { trenchStore } from '@/stores/trenchStore'
 import { uid } from '@/utils/id'
 
+const { role } = usePartyRole()
 const relationState = useStore(relationStore)
 const stratumState = useStore(stratumStore)
 const trenchState = useStore(trenchStore)
@@ -92,6 +94,7 @@ async function submit(): Promise<void> {
     unitAId: form.unitAId,
     type: form.type,
     unitBId: form.unitBId,
+    fieldRev: editingId.value ? relationState.relations.find((item) => item.id === editingId.value)?.fieldRev ?? 1 : 1,
     basis: form.basis,
     recorder: form.recorder.trim(),
     note: form.note.trim()
@@ -143,6 +146,15 @@ function selectNode(nodeId: string): void {
     </div>
 
     <el-alert
+      v-if="role === 'archive'"
+      class="alert"
+      type="info"
+      :closable="false"
+      show-icon
+      title="资料室端：层位关系听现场，本页只读"
+    />
+
+    <el-alert
       v-if="graph.hasCycle"
       class="alert"
       type="error"
@@ -185,7 +197,7 @@ function selectNode(nodeId: string): void {
       </el-card>
 
       <div class="side">
-        <el-card shadow="never" class="form-card">
+        <el-card v-if="role === 'field'" shadow="never" class="form-card">
           <template #header>{{ editingId ? '编辑层位关系' : '新增层位关系' }}</template>
           <UnitPicker
             :trenches="trenchState.trenches"
@@ -238,8 +250,11 @@ function selectNode(nodeId: string): void {
               <span class="mono">{{ unitLabel(relation.unitBId) }}</span>
               <span class="muted">（{{ relation.basis }} · {{ relation.recorder || '未填记录人' }}）</span>
               <span class="ops">
-                <el-button link type="primary" size="small" @click="edit(relation)">编辑</el-button>
-                <el-button link type="danger" size="small" @click="remove(relation)">删除</el-button>
+                <template v-if="role === 'field'">
+                  <el-button link type="primary" size="small" @click="edit(relation)">编辑</el-button>
+                  <el-button link type="danger" size="small" @click="remove(relation)">删除</el-button>
+                </template>
+                <el-tag v-else size="small" type="info" effect="plain">现场主权 · 只读</el-tag>
               </span>
             </li>
             <li v-if="relationState.relations.length === 0" class="muted">暂无层位关系</li>

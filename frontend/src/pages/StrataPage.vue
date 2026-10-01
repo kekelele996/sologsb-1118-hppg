@@ -2,10 +2,11 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Inclusion, Stratum, UnitType } from '@/types'
-import { INCLUSIONS, UNIT_TYPES, isCodeDuplicated, isDepthInverted, stratumThickness } from '@/types'
+import { INCLUSIONS, UNIT_TYPES, effectiveSoil, isCodeDuplicated, isDepthInverted, stratumThickness } from '@/types'
 import StratumDepthBar from '@/components/common/StratumDepthBar.vue'
 import TrenchTag from '@/components/common/TrenchTag.vue'
 import { useStore } from '@/hooks/usePersistentStore'
+import { usePartyRole } from '@/hooks/usePartyRole'
 import { useStratumOrder } from '@/hooks/useStratumOrder'
 import { stratumStore } from '@/stores/stratumStore'
 import { trenchStore } from '@/stores/trenchStore'
@@ -13,6 +14,7 @@ import { artifactStore } from '@/stores/artifactStore'
 import { relationStore } from '@/stores/relationStore'
 import { uid } from '@/utils/id'
 
+const { role } = usePartyRole()
 const trenchState = useStore(trenchStore)
 const stratumState = useStore(stratumStore)
 const artifactState = useStore(artifactStore)
@@ -148,21 +150,26 @@ async function submit(): Promise<void> {
     ElMessage.error(`同一探方内单位号「${candidate.code}」已存在，请更换`)
     return
   }
+  const existing = editingId.value ? stratumState.strata.find((item) => item.id === editingId.value) : undefined
   const row: Stratum = {
     id: candidate.id,
     trenchId: candidate.trenchId,
     code: candidate.code,
+    archiveCode: existing?.archiveCode ?? '',
+    fieldRev: existing?.fieldRev ?? 1,
     type: form.type,
     openLayer: form.openLayer.trim(),
     topDepth: Number(form.topDepth) || 0,
     bottomDepth: Number(form.bottomDepth) || 0,
     soil: form.soil.trim(),
+    soilArchive: existing?.soilArchive ?? '',
+    finalized: existing?.finalized ?? false,
     inclusions: [...form.inclusions],
     formation: form.formation.trim(),
     date: form.date,
     drawingNo: form.drawingNo.trim()
   }
-  await stratumStore.getState().save(row)
+  await stratumStore.getState().save(row, role.value)
   if (isDepthInverted(row)) {
     ElMessage.warning(`已保存，但「${row.code}」上界深度大于下界，层序倒置需复核`)
   } else {
@@ -204,9 +211,17 @@ async function applyBatchType(): Promise<void> {
           按类型与深度区间筛选；层序倒置（上界大于下界）与同一探方内单位号重复即时高亮提示，深度刻度条展示厚度。
         </p>
       </div>
-      <el-button type="primary" @click="openCreate">
+      <el-button v-if="role === 'field'" type="primary" @click="openCreate">
         <el-icon><Plus /></el-icon>新建地层单位
       </el-button>
+      <el-alert
+        v-else
+        title="资料室端：深度/层位/现场号只读（听现场）；土质土色与定稿编号请到「交接」页定稿"
+        type="info"
+        :closable="false"
+        show-icon
+        style="max-width: 600px"
+      />
     </div>
 
     <el-alert
@@ -249,10 +264,13 @@ async function applyBatchType(): Promise<void> {
         <span>—</span>
         <el-input-number v-model="depthTo" :min="0" :step="0.1" :controls="false" placeholder="止" style="width: 100px" />
       </div>
-      <el-select v-model="batchType" style="width: 130px">
-        <el-option v-for="type in UNIT_TYPES" :key="type" :label="type" :value="type" />
-      </el-select>
-      <el-button type="primary" plain @click="applyBatchType">批量调整类型</el-button>
+      <template v-if="role === 'field'">
+        <el-select v-model="batchType" style="width: 130px">
+          <el-option v-for="type in UNIT_TYPES" :key="type" :label="type" :value="type" />
+        </el-select>
+        <el-button type="primary" plain @click="applyBatchType">批量调整类型</el-button>
+      </template>
+      <el-tag v-else type="info" effect="plain">资料室只读视图 · 土质土色以定稿列为准</el-tag>
       <el-tag type="info" effect="plain">命中 {{ visible.length }} / {{ stratumState.strata.length }} 个单位</el-tag>
     </div>
 
@@ -264,7 +282,7 @@ async function applyBatchType(): Promise<void> {
       :row-class-name="rowClass"
       @selection-change="(rows: Stratum[]) => (selectedIds = rows.map((row) => row.id))"
     >
-      <el-table-column type="selection" width="46" />
+      <el-table-column v-if="role === 'field'" type="selection" width="46" />
       <el-table-column label="序号" width="70">
         <template #default="{ row }: { row: Stratum }">{{ order.indexOf.get(row.id) ?? '—' }}</template>
       </el-table-column>
@@ -273,10 +291,11 @@ async function applyBatchType(): Promise<void> {
           <span class="mono">{{ trenchLabel(row.trenchId) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="单位号" width="110">
+      <el-table-column label="单位号" min-width="170">
         <template #default="{ row }: { row: Stratum }">
           <span class="mono">{{ row.code }}</span>
           <el-tag v-if="duplicatedOf(row)" type="warning" size="small" effect="dark" class="mini">重复</el-tag>
+          <el-tag v-if="row.archiveCode" type="success" size="small" effect="plain" class="mini">定稿 {{ row.archiveCode }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="类型" width="120">
@@ -290,7 +309,13 @@ async function applyBatchType(): Promise<void> {
         </template>
       </el-table-column>
       <el-table-column label="开口层位" width="110" prop="openLayer" />
-      <el-table-column label="土质土色" min-width="150" prop="soil" show-overflow-tooltip />
+      <el-table-column label="土质土色" min-width="180">
+        <template #default="{ row }: { row: Stratum }">
+          <span>{{ effectiveSoil(row) || '—' }}</span>
+          <el-tag v-if="row.soilArchive" size="small" type="success" effect="dark" class="mini">资料室定稿</el-tag>
+          <el-tag v-else size="small" type="info" effect="plain" class="mini">现场记录</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="包含物" width="150">
         <template #default="{ row }: { row: Stratum }">
           <el-tag v-for="item in row.inclusions" :key="item" size="small" effect="plain" class="mini">{{ item }}</el-tag>
@@ -300,17 +325,21 @@ async function applyBatchType(): Promise<void> {
       <el-table-column label="出土物" width="90">
         <template #default="{ row }: { row: Stratum }">{{ artifactsOf(row.id) }} 件</template>
       </el-table-column>
-      <el-table-column label="校验" width="110">
+      <el-table-column label="校验/定稿" width="140">
         <template #default="{ row }: { row: Stratum }">
           <el-tag v-if="invertedOf(row)" type="danger" size="small" effect="dark">层序倒置</el-tag>
           <el-tag v-else-if="conflictOf(row.code)" type="warning" size="small" effect="dark">关系矛盾</el-tag>
+          <el-tag v-else-if="row.finalized" type="success" size="small" effect="dark">已定稿</el-tag>
           <el-tag v-else type="success" size="small" effect="plain">正常</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="130" fixed="right">
+      <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }: { row: Stratum }">
-          <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" size="small" @click="remove(row)">删除</el-button>
+          <template v-if="role === 'field'">
+            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" size="small" @click="remove(row)">删除</el-button>
+          </template>
+          <span v-else class="muted">只读 · 修订号 {{ row.fieldRev }}</span>
         </template>
       </el-table-column>
     </el-table>

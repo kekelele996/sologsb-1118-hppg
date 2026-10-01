@@ -1,40 +1,44 @@
 import { onUnmounted, reactive } from 'vue'
 import type { StoreApi } from 'zustand/vanilla'
 import Dexie, { type Table } from 'dexie'
-import type { Artifact, Relation, Stratum, Trench } from '@/types'
+import type { Artifact, HandoffRecord, Relation, Stratum, Trench } from '@/types'
 
 /** IndexedDB 数据结构版本号 */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export interface MetaRow {
   key: string
   value: number
 }
 
-/** Dexie 封装：探方 / 地层单位 / 出土物 / 层位关系 四张表 + 元数据表 */
+/** Dexie 封装：探方 / 地层单位 / 出土物 / 层位关系 四张表 + 交接箱表 + 元数据表 */
 class TrenchLogDb extends Dexie {
   trenches!: Table<Trench, string>
   strata!: Table<Stratum, string>
   artifacts!: Table<Artifact, string>
   relations!: Table<Relation, string>
+  handoffs!: Table<HandoffRecord, string>
   meta!: Table<MetaRow, string>
 
   constructor() {
-    super('gbtrenchlog')
+    // DB 名可由环境变量覆盖（仅离线测试用）；生产固定 gbtrenchlog
+    super(import.meta.env.VITE_DB_NAME || 'gbtrenchlog')
     this.version(1).stores({
       trenches: 'id, code, area',
       strata: 'id, trenchId, code, type',
       artifacts: 'id, stratumId, code, category',
       relations: 'id, unitAId, unitBId, type',
+      handoffs: 'id, direction, status, handoverPackageId',
       meta: 'key'
     })
     // v2：地层单位新增「开口层位」字段，迁移时为历史数据补齐默认值
-    this.version(SCHEMA_VERSION)
+    this.version(2)
       .stores({
         trenches: 'id, code, area, backfilled',
         strata: 'id, trenchId, code, type, topDepth',
         artifacts: 'id, stratumId, code, category, date',
         relations: 'id, unitAId, unitBId, type, basis',
+        handoffs: 'id, direction, status, handoverPackageId',
         meta: 'key'
       })
       .upgrade(async (tx) => {
@@ -48,6 +52,49 @@ class TrenchLogDb extends Dexie {
             if (!Array.isArray(stratum.inclusions)) {
               stratum.inclusions = []
             }
+          })
+      })
+    // v3：两侧交接。已有数据升级时按两侧拆开——
+    // 旧 code 归现场槽（贴在实物上不能动），资料室定稿槽留空；
+    // 深度/层位/关系归现场主权；土质土色现场记录保留，资料室定稿槽留空待定稿。
+    this.version(SCHEMA_VERSION)
+      .stores({
+        trenches: 'id, code, archiveCode, area, backfilled',
+        strata: 'id, trenchId, code, archiveCode, type, topDepth, finalized',
+        artifacts: 'id, stratumId, code, archiveCode, category, date',
+        relations: 'id, unitAId, unitBId, type, basis',
+        handoffs: 'id, direction, status, handoverPackageId',
+        meta: 'key'
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table<Trench, string>('trenches')
+          .toCollection()
+          .modify((trench) => {
+            if (typeof trench.archiveCode !== 'string') trench.archiveCode = ''
+            if (typeof trench.fieldRev !== 'number') trench.fieldRev = 1
+          })
+        await tx
+          .table<Stratum, string>('strata')
+          .toCollection()
+          .modify((stratum) => {
+            if (typeof stratum.archiveCode !== 'string') stratum.archiveCode = ''
+            if (typeof stratum.fieldRev !== 'number') stratum.fieldRev = 1
+            if (typeof stratum.soilArchive !== 'string') stratum.soilArchive = ''
+            if (typeof stratum.finalized !== 'boolean') stratum.finalized = false
+          })
+        await tx
+          .table<Artifact, string>('artifacts')
+          .toCollection()
+          .modify((artifact) => {
+            if (typeof artifact.archiveCode !== 'string') artifact.archiveCode = ''
+            if (typeof artifact.fieldRev !== 'number') artifact.fieldRev = 1
+          })
+        await tx
+          .table<Relation, string>('relations')
+          .toCollection()
+          .modify((relation) => {
+            if (typeof relation.fieldRev !== 'number') relation.fieldRev = 1
           })
       })
   }
@@ -85,7 +132,7 @@ export function useStore<T extends object>(store: StoreApi<T>): T {
   return state
 }
 
-/** 首次打开写入示例数据 */
+/** 首次打开写入示例数据（v3：含两侧字段，默认均为现场未交接状态） */
 export async function seedDemoData(): Promise<void> {
   const count = await db.trenches.count()
   if (count > 0) return
@@ -96,6 +143,8 @@ export async function seedDemoData(): Promise<void> {
     {
       id: 'tr_0501',
       code: 'T0501',
+      archiveCode: '',
+      fieldRev: 1,
       area: 'Ⅱ区',
       size: '5×5 米',
       basePoint: 'N1200 / E3000',
@@ -109,6 +158,8 @@ export async function seedDemoData(): Promise<void> {
     {
       id: 'tr_0502',
       code: 'T0502',
+      archiveCode: '',
+      fieldRev: 1,
       area: 'Ⅱ区',
       size: '5×5 米',
       basePoint: 'N1205 / E3000',
@@ -126,11 +177,15 @@ export async function seedDemoData(): Promise<void> {
       id: 'st_0501_l1',
       trenchId: 'tr_0501',
       code: 'L01',
+      archiveCode: '',
+      fieldRev: 1,
       type: '地层',
       openLayer: '第①层',
       topDepth: 0,
       bottomDepth: 0.25,
       soil: '灰褐色砂质黏土，疏松',
+      soilArchive: '',
+      finalized: false,
       inclusions: ['陶片', '炭屑'],
       formation: '近现代耕土层',
       date: today,
@@ -140,11 +195,15 @@ export async function seedDemoData(): Promise<void> {
       id: 'st_0501_l2',
       trenchId: 'tr_0501',
       code: 'L02',
+      archiveCode: '',
+      fieldRev: 1,
       type: '地层',
       openLayer: '第②层',
       topDepth: 0.25,
       bottomDepth: 0.6,
       soil: '黄褐色黏土，致密',
+      soilArchive: '',
+      finalized: false,
       inclusions: ['陶片', '骨'],
       formation: '汉代文化层',
       date: today,
@@ -154,11 +213,15 @@ export async function seedDemoData(): Promise<void> {
       id: 'st_0501_h12',
       trenchId: 'tr_0501',
       code: 'H12',
+      archiveCode: '',
+      fieldRev: 1,
       type: '灰坑',
       openLayer: '第②层下',
       topDepth: 0.6,
       bottomDepth: 1.4,
       soil: '深灰褐土，含大量灰烬',
+      soilArchive: '',
+      finalized: false,
       inclusions: ['陶片', '骨', '炭屑'],
       formation: '生活垃圾坑',
       date: today,
@@ -168,11 +231,15 @@ export async function seedDemoData(): Promise<void> {
       id: 'st_0502_l1',
       trenchId: 'tr_0502',
       code: 'L01',
+      archiveCode: '',
+      fieldRev: 1,
       type: '地层',
       openLayer: '第①层',
       topDepth: 0,
       bottomDepth: 0.3,
       soil: '灰褐色砂质黏土',
+      soilArchive: '',
+      finalized: false,
       inclusions: ['陶片'],
       formation: '耕土层',
       date: today,
@@ -185,6 +252,8 @@ export async function seedDemoData(): Promise<void> {
       id: 'af_001',
       stratumId: 'st_0501_l2',
       code: 'T0501②:1',
+      archiveCode: '',
+      fieldRev: 1,
       category: '陶器',
       count: 3,
       completeness: '残片',
@@ -199,6 +268,8 @@ export async function seedDemoData(): Promise<void> {
       id: 'af_002',
       stratumId: 'st_0501_h12',
       code: 'T0501H12:1',
+      archiveCode: '',
+      fieldRev: 1,
       category: '骨器',
       count: 1,
       completeness: '可复原',
@@ -217,6 +288,7 @@ export async function seedDemoData(): Promise<void> {
       unitAId: 'st_0501_h12',
       type: '打破',
       unitBId: 'st_0501_l2',
+      fieldRev: 1,
       basis: '剖面观察',
       recorder: '方铭',
       note: 'H12 开口于第②层下，打破 L02'
@@ -226,6 +298,7 @@ export async function seedDemoData(): Promise<void> {
       unitAId: 'st_0501_l1',
       type: '叠压',
       unitBId: 'st_0501_l2',
+      fieldRev: 1,
       basis: '剖面观察',
       recorder: '方铭',
       note: 'L01 叠压 L02，界面清晰'

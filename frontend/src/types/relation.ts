@@ -6,7 +6,7 @@ export type RelationType = (typeof RELATION_TYPES)[number]
 export const RELATION_BASES = ['剖面观察', '平面观察'] as const
 export type RelationBasis = (typeof RELATION_BASES)[number]
 
-/** Relation 层位关系 */
+/** Relation 层位关系（层位关系听现场，资料室只读） */
 export interface Relation {
   id: string
   /** 单位 A */
@@ -14,6 +14,8 @@ export interface Relation {
   type: RelationType
   /** 单位 B */
   unitBId: string
+  /** 现场侧修订号 */
+  fieldRev: number
   basis: RelationBasis
   recorder: string
   note: string

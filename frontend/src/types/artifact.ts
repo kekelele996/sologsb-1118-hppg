@@ -9,10 +9,14 @@ export type Completeness = (typeof COMPLETENESS)[number]
 /** Artifact 出土物 */
 export interface Artifact {
   id: string
-  /** 所属地层单位（登记时锁定） */
+  /** 所属地层单位（登记时锁定，引用跨侧稳定 id，不靠编号认人） */
   stratumId: string
-  /** 器物编号 */
+  /** 现场器物编号（早贴在实物上的标签，资料室不得覆盖） */
   code: string
+  /** 资料室定稿器物编号（回执带回，未回执为空） */
+  archiveCode: string
+  /** 现场侧修订号 */
+  fieldRev: number
   category: ArtifactCategory
   /** 件数 */
   count: number

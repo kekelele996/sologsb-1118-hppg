@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { Artifact, Stratum } from '@/types'
-import { stratumThickness } from '@/types'
+import { effectiveCode, effectiveSoil, stratumThickness } from '@/types'
 import StratumDepthBar from '@/components/common/StratumDepthBar.vue'
 import { useStore } from '@/hooks/usePersistentStore'
 import { stratumStore } from '@/stores/stratumStore'
@@ -68,7 +68,7 @@ function artifactPos(artifact: Artifact): { x: number; y: number } {
 }
 
 function stratumLabel(stratum: Stratum): string {
-  return `${stratum.code} · ${stratum.type} · 厚 ${stratumThickness(stratum)} m`
+  return `${effectiveCode(stratum)} · ${stratum.type} · 厚 ${stratumThickness(stratum)} m`
 }
 
 const unitColors: Record<string, string> = {
@@ -152,7 +152,7 @@ const unitColors: Record<string, string> = {
               font-size="10"
               fill="#6b5b45"
             >
-              {{ stratum.soil.slice(0, 8) }}
+              {{ effectiveSoil(stratum).slice(0, 8) }}
             </text>
           </g>
 
@@ -194,12 +194,14 @@ const unitColors: Record<string, string> = {
         <div class="bars">
           <div v-for="stratum in strata" :key="stratum.id" class="bar-row">
             <div class="bar-head">
-              <span class="mono">{{ stratum.code }}</span>
+              <span class="mono">{{ effectiveCode(stratum) }}</span>
+              <el-tag v-if="stratum.archiveCode" size="small" type="success" effect="plain">定稿</el-tag>
+              <el-tag v-else size="small" type="info" effect="plain">现场号 {{ stratum.code }}</el-tag>
               <el-tag size="small" effect="plain">{{ stratum.type }}</el-tag>
               <span class="muted">{{ stratum.openLayer }}</span>
             </div>
             <StratumDepthBar :stratum="stratum" :length="250" :max-depth="maxDepth" />
-            <p class="soil">{{ stratum.soil || '未记录土质土色' }} · 包含物 {{ stratum.inclusions.join('、') || '无' }}</p>
+            <p class="soil">{{ effectiveSoil(stratum) || '未记录土质土色' }}<template v-if="stratum.soilArchive">（资料室定稿）</template> · 包含物 {{ stratum.inclusions.join('、') || '无' }}</p>
           </div>
           <p v-if="strata.length === 0" class="muted">暂无地层单位</p>
         </div>

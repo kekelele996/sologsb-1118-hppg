@@ -5,12 +5,14 @@ import type { Trench } from '@/types'
 import { TRENCH_SIZES, findTrenchConflict, trenchKey } from '@/types'
 import TrenchTag from '@/components/common/TrenchTag.vue'
 import { useStore } from '@/hooks/usePersistentStore'
+import { usePartyRole } from '@/hooks/usePartyRole'
 import { trenchStore } from '@/stores/trenchStore'
 import { stratumStore } from '@/stores/stratumStore'
 import { artifactStore } from '@/stores/artifactStore'
 import { relationStore } from '@/stores/relationStore'
 import { uid } from '@/utils/id'
 
+const { role } = usePartyRole()
 const trenchState = useStore(trenchStore)
 const stratumState = useStore(stratumStore)
 const artifactState = useStore(artifactStore)
@@ -121,6 +123,8 @@ async function submit(): Promise<void> {
   const row: Trench = {
     id: candidate.id,
     code: candidate.code,
+    archiveCode: editingId.value ? trenchState.trenches.find((item) => item.id === editingId.value)?.archiveCode ?? '' : '',
+    fieldRev: 1,
     area: candidate.area,
     size: form.size,
     basePoint: form.basePoint.trim(),
@@ -131,7 +135,7 @@ async function submit(): Promise<void> {
     wallNote: form.wallNote.trim(),
     backfilled: form.backfilled
   }
-  await trenchStore.getState().save(row)
+  await trenchStore.getState().save(row, role.value)
   ElMessage.success(`探方 ${trenchKey(row)} 已保存`)
   dialogVisible.value = false
 }
@@ -157,9 +161,17 @@ async function remove(trench: Trench): Promise<void> {
           按「发掘区-探方号」校验唯一性；卡片展示地层单位数、出土物件数、层位关系数与发掘进度状态。
         </p>
       </div>
-      <el-button type="primary" @click="openCreate">
+      <el-button v-if="role === 'field'" type="primary" @click="openCreate">
         <el-icon><Plus /></el-icon>新建探方
       </el-button>
+      <el-alert
+        v-else
+        title="资料室端：探方现场记录只读，定稿编号请到「现场⇄资料室交接」页对交接包定稿"
+        type="info"
+        :closable="false"
+        show-icon
+        style="max-width: 560px"
+      />
     </div>
 
     <div class="toolbar">
@@ -182,6 +194,12 @@ async function remove(trench: Trench): Promise<void> {
           <div class="metric"><span>规格</span><b>{{ trench.size }}</b></div>
         </div>
         <el-descriptions :column="1" size="small" border class="desc">
+          <el-descriptions-item label="现场探方号">
+            <span class="mono">{{ trench.code }}</span>
+            <el-tag v-if="trench.archiveCode" size="small" type="success" effect="plain" class="code-tag">
+              资料室定稿：<span class="mono">{{ trench.archiveCode }}</span>
+            </el-tag>
+          </el-descriptions-item>
           <el-descriptions-item label="基点坐标">{{ trench.basePoint || '—' }}</el-descriptions-item>
           <el-descriptions-item label="开口层位">{{ trench.openLayer || '—' }}</el-descriptions-item>
           <el-descriptions-item label="发掘日期">
@@ -190,12 +208,15 @@ async function remove(trench: Trench): Promise<void> {
           <el-descriptions-item label="负责人">{{ trench.leader || '—' }}</el-descriptions-item>
           <el-descriptions-item label="四壁方向备注">{{ trench.wallNote || '—' }}</el-descriptions-item>
         </el-descriptions>
-        <div class="card-actions">
+        <div v-if="role === 'field'" class="card-actions">
           <el-button size="small" @click="openEdit(trench)">编辑</el-button>
           <el-button size="small" @click="trenchStore.getState().setBackfilled(trench.id, !trench.backfilled)">
             {{ trench.backfilled ? '取消回填标记' : '标记已回填' }}
           </el-button>
           <el-button size="small" type="danger" plain @click="remove(trench)">删除</el-button>
+        </div>
+        <div v-else class="card-actions">
+          <el-tag size="small" type="info" effect="plain">现场记录只读（修订号 {{ trench.fieldRev }}）</el-tag>
         </div>
       </el-card>
       <el-empty v-if="visible.length === 0" description="暂无探方，先新建一个探方" />
@@ -306,5 +327,8 @@ async function remove(trench: Trench): Promise<void> {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.code-tag {
+  margin-left: 8px;
 }
 </style>

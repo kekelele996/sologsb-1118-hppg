@@ -6,12 +6,14 @@ import { ARTIFACT_CATEGORIES, COMPLETENESS } from '@/types'
 import StratumDepthBar from '@/components/common/StratumDepthBar.vue'
 import UnitPicker from '@/components/common/UnitPicker.vue'
 import { useStore } from '@/hooks/usePersistentStore'
+import { usePartyRole } from '@/hooks/usePartyRole'
 import { artifactStore } from '@/stores/artifactStore'
 import { stratumStore } from '@/stores/stratumStore'
 import { trenchStore } from '@/stores/trenchStore'
 import { downloadCsv } from '@/utils/export'
 import { uid } from '@/utils/id'
 
+const { role } = usePartyRole()
 const artifactState = useStore(artifactStore)
 const stratumState = useStore(stratumStore)
 const trenchState = useStore(trenchStore)
@@ -146,10 +148,13 @@ async function submit(): Promise<void> {
     )
     return
   }
+  const existing = editingId.value ? artifactState.artifacts.find((item) => item.id === editingId.value) : undefined
   const row: Artifact = {
     id: editingId.value ?? uid('af'),
     stratumId: lockedStratum.value.id,
     code: form.code.trim(),
+    archiveCode: existing?.archiveCode ?? '',
+    fieldRev: existing?.fieldRev ?? 1,
     category: form.category,
     count: Number(form.count) || 1,
     completeness: form.completeness,
@@ -160,7 +165,7 @@ async function submit(): Promise<void> {
     collector: form.collector.trim(),
     tempLocation: form.tempLocation.trim()
   }
-  await artifactStore.getState().save(row)
+  await artifactStore.getState().save(row, role.value)
   ElMessage.success(`出土物 ${row.code} 已登记到 ${lockedStratum.value.code}`)
   resetForm()
 }
@@ -219,7 +224,16 @@ function exportList(): void {
       <el-button @click="exportList">导出清单</el-button>
     </div>
 
-    <el-card shadow="never" class="form-card">
+    <el-alert
+      v-if="role === 'archive'"
+      title="资料室端：出土物现场记录只读（现场器物号贴在实物上不能改）；定稿号请到「现场⇄资料室交接」页随交接包定稿"
+      type="info"
+      :closable="false"
+      show-icon
+      class="role-alert"
+    />
+
+    <el-card v-if="role === 'field'" shadow="never" class="form-card">
       <template #header>登记出土物（层位上下文锁定）</template>
       <UnitPicker
         v-model="pickStratumId"
@@ -308,7 +322,12 @@ function exportList(): void {
     </div>
 
     <el-table :data="visible" border stripe row-key="id">
-      <el-table-column prop="code" label="器物编号" width="140" />
+      <el-table-column label="器物编号" min-width="200">
+        <template #default="{ row }: { row: Artifact }">
+          <span class="mono">{{ row.code }}</span>
+          <el-tag v-if="row.archiveCode" type="success" size="small" effect="plain" class="mini">定稿 {{ row.archiveCode }}</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="探方" width="150">
         <template #default="{ row }: { row: Artifact }">
           <span class="mono">{{ trenchOf(row.stratumId) }}</span>
@@ -338,10 +357,13 @@ function exportList(): void {
       <el-table-column prop="date" label="出土日期" width="120" />
       <el-table-column prop="collector" label="提取人" width="90" />
       <el-table-column prop="tempLocation" label="临时存放" min-width="140" show-overflow-tooltip />
-      <el-table-column label="操作" width="130" fixed="right">
+      <el-table-column label="操作" width="150" fixed="right">
         <template #default="{ row }: { row: Artifact }">
-          <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" size="small" @click="remove(row)">删除</el-button>
+          <template v-if="role === 'field'">
+            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" size="small" @click="remove(row)">删除</el-button>
+          </template>
+          <span v-else class="muted">现场记录只读</span>
         </template>
       </el-table-column>
     </el-table>
@@ -349,6 +371,12 @@ function exportList(): void {
 </template>
 
 <style scoped>
+.role-alert {
+  margin-bottom: 14px;
+}
+.mini {
+  margin-left: 6px;
+}
 .form-card {
   border-radius: 12px;
   margin-bottom: 16px;

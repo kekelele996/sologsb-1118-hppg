@@ -2,12 +2,14 @@
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useStore } from '@/hooks/usePersistentStore'
+import { usePartyRole } from '@/hooks/usePartyRole'
 import { trenchStore } from '@/stores/trenchStore'
 import { stratumStore } from '@/stores/stratumStore'
 import { artifactStore } from '@/stores/artifactStore'
 import { relationStore } from '@/stores/relationStore'
 
 const route = useRoute()
+const { role, setRole } = usePartyRole()
 const trenchState = useStore(trenchStore)
 const stratumState = useStore(stratumStore)
 const artifactState = useStore(artifactStore)
@@ -18,7 +20,8 @@ const menus = [
   { path: '/strata', label: '地层单位编目', icon: 'Files' },
   { path: '/artifacts', label: '出土物登记', icon: 'Box' },
   { path: '/relations', label: '层位关系', icon: 'Share' },
-  { path: '/sections', label: '四壁剖面示意', icon: 'DataLine' }
+  { path: '/sections', label: '四壁剖面示意', icon: 'DataLine' },
+  { path: '/handoff', label: '现场⇄资料室交接', icon: 'Switch' }
 ]
 
 const activeMenu = computed(() => menus.find((item) => route.path.startsWith(item.path))?.path ?? '/trenches')
@@ -65,7 +68,17 @@ onMounted(async () => {
     <el-container>
       <el-header class="header">
         <span class="crumb">{{ (route.meta.title as string) ?? '编目台' }}</span>
-        <span class="head-tip">探方 → 地层单位 → 层位关系 → 出土物，层位上下文不丢失</span>
+        <div class="head-right">
+          <el-radio-group
+            :model-value="role"
+            size="small"
+            @update:model-value="(value: 'field' | 'archive') => setRole(value)"
+          >
+            <el-radio-button value="field">发掘现场</el-radio-button>
+            <el-radio-button value="archive">资料室</el-radio-button>
+          </el-radio-group>
+          <span class="head-tip">当前：{{ role === 'field' ? '现场号贴实物不动 · 深度/层位听现场' : '定稿号与土质土色听资料室 · 定稿不退' }}</span>
+        </div>
       </el-header>
       <el-main class="main">
         <router-view />
@@ -154,6 +167,11 @@ onMounted(async () => {
 }
 .crumb {
   font-weight: 600;
+}
+.head-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 .head-tip {
   font-size: 12px;

@@ -6,7 +6,7 @@ export interface RelationState {
   relations: Relation[]
   loaded: boolean
   hydrate: () => Promise<void>
-  /** 保存前由页面做环路检测，store 只负责写入 */
+  /** 保存前由页面做环路检测，store 只负责写入；层位关系听现场，保存即自增 fieldRev */
   save: (relation: Relation) => Promise<void>
   remove: (id: string) => Promise<void>
   removeByStratum: (stratumId: string) => Promise<void>
@@ -21,7 +21,9 @@ export const relationStore = createStore<RelationState>((set, get) => ({
     set({ relations, loaded: true })
   },
   save: async (relation) => {
-    await syncPut<Relation>(db.relations, relation)
+    const previous = get().relations.find((item) => item.id === relation.id)
+    const fieldRev = Math.max(relation.fieldRev ?? 1, previous?.fieldRev ?? 0) + 1
+    await syncPut<Relation>(db.relations, { ...relation, fieldRev })
     await get().hydrate()
   },
   remove: async (id) => {

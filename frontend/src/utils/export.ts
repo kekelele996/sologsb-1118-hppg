@@ -16,6 +16,27 @@ export function downloadJson(filename: string, data: unknown): void {
   downloadText(filename, JSON.stringify(data, null, 2), 'application/json;charset=utf-8')
 }
 
+/** 选择并读取本地文本文件（交接包 / 回执上传用） */
+export function pickTextFile(accept = '.json,application/json'): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = accept
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) {
+        reject(new Error('未选择文件'))
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result ?? ''))
+      reader.onerror = () => reject(reader.error ?? new Error('文件读取失败'))
+      reader.readAsText(file, 'utf-8')
+    }
+    input.click()
+  })
+}
+
 /** 数组转 CSV */
 export function toCsv<T extends Record<string, unknown>>(
   rows: T[],

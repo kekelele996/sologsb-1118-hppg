@@ -35,6 +35,7 @@ FRONTEND_PORT=21818
 | 路由 | Vue Router 4（History 模式，nginx `try_files` 回落） |
 | 构建 | Vite 6 |
 | 本地存储 | IndexedDB（Dexie 封装，含 `schemaVersion` 与升级迁移） |
+| 两侧交接 | 离线 JSON 交接包/回执 + 出件箱/收件箱（IndexedDB `handoffs` 表，无后端） |
 | 部署 | 多阶段 Dockerfile：`node:20-alpine` 构建 → `nginx:alpine` 托管 |
 
 ## 三、本地开发
@@ -57,13 +58,13 @@ sologsb-1118/
 │   ├── nginx.conf              # try_files 前端路由回落 + gzip
 │   ├── public/favicon.svg
 │   └── src/
-│       ├── types/              # trench.ts / stratum.ts / artifact.ts / relation.ts / index.ts
-│       ├── stores/             # trenchStore / stratumStore / artifactStore / relationStore（Zustand）
+│       ├── types/              # trench.ts / stratum.ts / artifact.ts / relation.ts / handoff.ts / index.ts
+│       ├── stores/             # trenchStore / stratumStore / artifactStore / relationStore / handoffStore（Zustand）
 │       ├── components/common/  # StratumDepthBar / RelationGraph / TrenchTag / UnitPicker
-│       ├── hooks/              # useStratumOrder / useRelationGraph / usePersistentStore
-│       ├── pages/              # TrenchesPage / StrataPage / ArtifactsPage / RelationsPage / SectionsPage
+│       ├── hooks/              # useStratumOrder / useRelationGraph / usePersistentStore / usePartyRole
+│       ├── pages/              # TrenchesPage / StrataPage / ArtifactsPage / RelationsPage / SectionsPage / HandoffPage
 │       ├── router/index.ts
-│       └── utils/              # graph.ts / export.ts / id.ts
+│       └── utils/              # graph.ts / export.ts / id.ts / handoff.ts（交接合并引擎）
 ```
 
 ## 五、数据模型与存储
@@ -77,7 +78,26 @@ sologsb-1118/
 
 - 数据库名 `gbtrenchlog`，`meta` 表保存 `schemaVersion`；
 - `version(2)` 升级迁移会为历史地层单位补齐「开口层位」字段并规范包含物数组；
+- `version(3)` 升级为**两侧交接**：已有数据按两侧拆开——旧 `code` 归现场槽（贴在实物上不动），新增 `archiveCode` 资料室定稿槽（默认空）；深度/层位/关系归现场主权（`fieldRev` 修订号）；地层单位新增 `soilArchive`（资料室定稿土质土色）与 `finalized`（定稿态）；新增 `handoffs` 出件/收件箱表；
 - 数据仅存于浏览器本地，容器无状态、不挂载命名卷。
+
+## 五·补、现场 ⇄ 资料室交接（v3）
+
+应用头部或 `/handoff` 页可切换**发掘现场端 / 资料室端**（同一套应用在两边各部署一份，角色存浏览器本地）。交接完全离线，靠 JSON 文件对传，不依赖网络：
+
+| 交接语义 | 落法 |
+| --- | --- |
+| 编号一改就对不上 | 跨侧只认稳定 `id`（UUID），不认手抄编号；编号两侧分开存：`code` 现场号 + `archiveCode` 资料室定稿号 |
+| 现场交出当天记录 | 现场端按日期勾选「探方 / 地层单位 / 出土物」，自动闭包带出所属探方、单位与两端齐备的层位关系，生成交接包并写入**出件箱**（`pending`） |
+| 资料室定稿回执 | 资料室端收件后在定稿对话框按自己规矩编定稿号、定稿土质土色；齐全后整包事务定稿并导出回执 JSON |
+| 同一单位两边都动过 | **土质土色听资料室**（`soilArchive`，非空即覆盖展示）；**深度与层位关系听现场**（仅在 `fieldRev` 更高时覆盖） |
+| 现场号贴在实物上 | 资料室合并永不写 `code`，只回填 `archiveCode`；现场收回执也只回填定稿号，现场号不动 |
+| 交接失败现场重试 | 交接包一次生成、包号不变，出件箱 `pending` 常驻，可反复重新导出；对方按包号幂等收件 |
+| 失败整包拒收 | 资料室收件先校验包格式/字段/主键唯一/包内引用完整（单位→探方、出土物→单位、关系两端），任一不过整包不落库 |
+| 定稿不退 | 定稿写入 `finalized=true`，后续交接包不覆盖定稿号与定稿土质（现场修订的深度/层位仍更新）；定稿号与库内已定稿记录重号时拒绝出回执 |
+| 回执闭环 | 现场导入回执后回填定稿号，出件箱记录置 `receipted`；同号交接包/回执重投均幂等 |
+
+> 现场端可新建/编辑/删除全部记录（每次保存 `fieldRev +1`）；资料室端各编目页只读，定稿动作只能在 `/handoff` 对交接包执行。
 
 ## 六、主要页面
 
@@ -88,6 +108,7 @@ sologsb-1118/
 | `/artifacts` | 出土物登记与清单：先锁定所属地层单位（级联选择器），带出深度区间并校验出土深度是否在该区间内 |
 | `/relations` | 层位关系视图：SVG 有向图展示叠压/打破，点击节点高亮直接关系，新增关系前做环路检测 |
 | `/sections` | 四壁剖面示意：按深度刻度绘制地层条带与厚度标注，叠加出土物投影点 |
+| `/handoff` | 现场⇄资料室交接：现场组当天交接包/出件箱重试/收回执；资料室整包校验收件、定稿编号与土质土色、出回执 |
 
 ## 七、校验规则
 
