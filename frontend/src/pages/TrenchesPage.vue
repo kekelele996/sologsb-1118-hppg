@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Trench } from '@/types'
 import { TRENCH_SIZES, findTrenchConflict, trenchKey } from '@/types'
 import TrenchTag from '@/components/common/TrenchTag.vue'
-import { useStore } from '@/hooks/usePersistentStore'
+import { provenanceForSave, useStore } from '@/hooks/usePersistentStore'
 import { trenchStore } from '@/stores/trenchStore'
 import { stratumStore } from '@/stores/stratumStore'
 import { artifactStore } from '@/stores/artifactStore'
@@ -119,6 +119,10 @@ async function submit(): Promise<void> {
     return
   }
   const row: Trench = {
+    ...provenanceForSave<Trench>(
+      editingId.value ? trenchState.trenches.find((item) => item.id === editingId.value) : null,
+      candidate.id
+    ),
     id: candidate.id,
     code: candidate.code,
     area: candidate.area,

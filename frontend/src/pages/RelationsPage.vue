@@ -5,7 +5,7 @@ import type { Relation, RelationBasis, RelationType } from '@/types'
 import { RELATION_BASES, RELATION_TYPES } from '@/types'
 import RelationGraph from '@/components/common/RelationGraph.vue'
 import UnitPicker from '@/components/common/UnitPicker.vue'
-import { useStore } from '@/hooks/usePersistentStore'
+import { provenanceForSave, useStore } from '@/hooks/usePersistentStore'
 import { checkRelationCycle, useRelationGraph } from '@/hooks/useRelationGraph'
 import { relationStore } from '@/stores/relationStore'
 import { stratumStore } from '@/stores/stratumStore'
@@ -88,6 +88,10 @@ async function submit(): Promise<void> {
     return
   }
   const row: Relation = {
+    ...provenanceForSave<Relation>(
+      editingId.value ? relationState.relations.find((item) => item.id === editingId.value) : null,
+      editingId.value ?? uid('rl')
+    ),
     id: editingId.value ?? uid('rl'),
     unitAId: form.unitAId,
     type: form.type,

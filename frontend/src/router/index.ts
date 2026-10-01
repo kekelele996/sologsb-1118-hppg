@@ -32,6 +32,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/pages/SectionsPage.vue'),
     meta: { title: '四壁剖面示意' }
   },
+  {
+    path: '/handover',
+    name: 'handover',
+    component: () => import('@/pages/HandoverPage.vue'),
+    meta: { title: '交接与回执' }
+  },
   { path: '/:pathMatch(.*)*', redirect: '/trenches' }
 ]
 

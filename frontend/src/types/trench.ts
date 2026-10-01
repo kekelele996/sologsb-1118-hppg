@@ -1,9 +1,11 @@
+import type { Provenance } from './common'
+
 /** 探方规格 */
 export const TRENCH_SIZES = ['5×5 米', '10×10 米', '5×10 米', '2×10 米'] as const
 export type TrenchSize = (typeof TRENCH_SIZES)[number]
 
 /** Trench 探方 */
-export interface Trench {
+export interface Trench extends Provenance<Trench> {
   id: string
   /** 探方号，如 T0501 */
   code: string

@@ -5,7 +5,7 @@ import type { Inclusion, Stratum, UnitType } from '@/types'
 import { INCLUSIONS, UNIT_TYPES, isCodeDuplicated, isDepthInverted, stratumThickness } from '@/types'
 import StratumDepthBar from '@/components/common/StratumDepthBar.vue'
 import TrenchTag from '@/components/common/TrenchTag.vue'
-import { useStore } from '@/hooks/usePersistentStore'
+import { provenanceForSave, useStore } from '@/hooks/usePersistentStore'
 import { useStratumOrder } from '@/hooks/useStratumOrder'
 import { stratumStore } from '@/stores/stratumStore'
 import { trenchStore } from '@/stores/trenchStore'
@@ -149,6 +149,10 @@ async function submit(): Promise<void> {
     return
   }
   const row: Stratum = {
+    ...provenanceForSave<Stratum>(
+      editingId.value ? stratumState.strata.find((item) => item.id === editingId.value) : null,
+      candidate.id
+    ),
     id: candidate.id,
     trenchId: candidate.trenchId,
     code: candidate.code,

@@ -1,3 +1,5 @@
+import type { Provenance } from './common'
+
 /** 器物类别 */
 export const ARTIFACT_CATEGORIES = ['陶器', '瓷器', '石器', '骨器', '铜器'] as const
 export type ArtifactCategory = (typeof ARTIFACT_CATEGORIES)[number]
@@ -7,7 +9,7 @@ export const COMPLETENESS = ['完整', '可复原', '残片'] as const
 export type Completeness = (typeof COMPLETENESS)[number]
 
 /** Artifact 出土物 */
-export interface Artifact {
+export interface Artifact extends Provenance<Artifact> {
   id: string
   /** 所属地层单位（登记时锁定） */
   stratumId: string

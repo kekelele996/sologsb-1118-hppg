@@ -5,20 +5,24 @@ import 'element-plus/dist/index.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from '@/App.vue'
 import router from '@/router'
-import { seedDemoData, stampDbVersion } from '@/hooks/usePersistentStore'
+import { seedDemoData, stampDbVersion, getDeviceId, getDeviceRole } from '@/hooks/usePersistentStore'
 import { trenchStore } from '@/stores/trenchStore'
 import { stratumStore } from '@/stores/stratumStore'
 import { artifactStore } from '@/stores/artifactStore'
 import { relationStore } from '@/stores/relationStore'
+import { handoverStore } from '@/stores/handoverStore'
 import '@/styles/main.css'
 
 async function bootstrap(): Promise<void> {
+  await getDeviceId()
+  await getDeviceRole()
   await seedDemoData()
   await stampDbVersion()
   await trenchStore.getState().hydrate()
   await stratumStore.getState().hydrate()
   await artifactStore.getState().hydrate()
   await relationStore.getState().hydrate()
+  await handoverStore.getState().hydrate()
 }
 
 const app = createApp(App)

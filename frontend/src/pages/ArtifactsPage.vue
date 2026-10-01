@@ -5,7 +5,7 @@ import type { Artifact, ArtifactCategory, Completeness } from '@/types'
 import { ARTIFACT_CATEGORIES, COMPLETENESS } from '@/types'
 import StratumDepthBar from '@/components/common/StratumDepthBar.vue'
 import UnitPicker from '@/components/common/UnitPicker.vue'
-import { useStore } from '@/hooks/usePersistentStore'
+import { provenanceForSave, useStore } from '@/hooks/usePersistentStore'
 import { artifactStore } from '@/stores/artifactStore'
 import { stratumStore } from '@/stores/stratumStore'
 import { trenchStore } from '@/stores/trenchStore'
@@ -147,6 +147,10 @@ async function submit(): Promise<void> {
     return
   }
   const row: Artifact = {
+    ...provenanceForSave<Artifact>(
+      editingId.value ? artifactState.artifacts.find((item) => item.id === editingId.value) : null,
+      editingId.value ?? uid('af')
+    ),
     id: editingId.value ?? uid('af'),
     stratumId: lockedStratum.value.id,
     code: form.code.trim(),

@@ -1,3 +1,5 @@
+import type { Provenance } from './common'
+
 /** 单位类型 */
 export const UNIT_TYPES = ['地层', '灰坑', '房址', '沟', '墓葬'] as const
 export type UnitType = (typeof UNIT_TYPES)[number]
@@ -7,7 +9,7 @@ export const INCLUSIONS = ['陶片', '骨', '炭屑', '石器'] as const
 export type Inclusion = (typeof INCLUSIONS)[number]
 
 /** Stratum 地层单位 */
-export interface Stratum {
+export interface Stratum extends Provenance<Stratum> {
   id: string
   trenchId: string
   /** 单位号，如 H12、L03 */
